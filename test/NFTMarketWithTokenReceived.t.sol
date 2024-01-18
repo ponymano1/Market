@@ -7,14 +7,14 @@ import {MyERC721} from "../src/MyERC721.sol";
 import {MyERC20} from "../src/MyERC20.sol";
 
 contract NFTMarketTest is Test {
-    MyERC20 public myERC20;
-    MyERC721 public myERC721;
-    NFTMarket public nftMarket;
+    MyERC20  myERC20;
+    MyERC721  myERC721;
+    NFTMarket  nftMarket;
     
 
-    address public admin;
-    address public seller1;
-    address public buyer1;
+    address  admin;
+    address  seller1;
+    address  buyer1;
 
     function setUp() public {
         admin = makeAddr("myAdmin");
