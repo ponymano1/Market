@@ -63,7 +63,7 @@ contract NFTMarketTest is Test {
 
     function test_BuyNFTViaBuyFunction() public {
         uint256 nftToken = mintAndListNFT(seller1, "test_BuyNFTViaBuyFunction", 100);
-        buyNFT(buyer1, seller1 , nftToken, 100);
+        buyNFT(buyer1, seller1 , nftToken, 100, false);
     }
 
     function test_BuyNFTViaTransfer() public {
@@ -74,32 +74,32 @@ contract NFTMarketTest is Test {
 
     function testFail_BuyNFTWithoutEnoughToken() public {
         uint256 nftToken = mintAndListNFT(seller1, "testFail_BuyNFTWithoutEnoughToken", 100);
-        buyNFT(buyer1, seller1 , nftToken, 50);
+        buyNFT(buyer1, seller1 , nftToken, 50, false);
     }
 
     function testFail_BuyNFTAlreadySold() public {
         uint256 nftToken = mintAndListNFT(seller1, "testFail_BuyNFTWithoutList", 100);
-        buyNFT(buyer1, seller1 , nftToken, 100);
-        buyNFT(buyer1, seller1 , nftToken, 100);
+        buyNFT(buyer1, seller1 , nftToken, 100, false);
+        buyNFT(buyer1, seller1 , nftToken, 100, false);
     }
 
     function testFail_TransferWithoutEnoughToken() public {
         uint256 nftToken = mintAndListNFT(seller1, "testFail_BuyNFTWithoutEnoughToken", 100);
-        buyNFT(buyer1, seller1 , nftToken, 50);        
+        buyNFT(buyer1, seller1 , nftToken, 50, false);        
     }
 
     function test_BalanceCorrectAfterError() public {
         uint256 nftTokenId = mintAndListNFT(seller1, "test_BalanceCorrectAfterError", 100);
         uint256 balanceBuyerBefore = myERC20.balanceOf(buyer1);
-        //vm.expectRevert();
-        buyNFT(buyer1, seller1, nftTokenId, 50);
+        buyNFT(buyer1, seller1, nftTokenId, 50, true);
         uint256 balanceBuyerAfter = myERC20.balanceOf(buyer1);
-        assertEq(balanceBuyerBefore, balanceBuyerAfter);
+        //因为BuyNFT里mint了50个token，所以这里balanceBuyerBefore + 50
+        assertEq(balanceBuyerBefore + 50, balanceBuyerAfter, "expect buyer balance not deduct");
     }
 
     function test_BuyWithHigherPrice() public {
         uint256 nftToken = mintAndListNFT(seller1, "test_BuyWithHigherPrice", 100);
-        buyNFT(buyer1, seller1 , nftToken, 200);
+        buyNFT(buyer1, seller1 , nftToken, 200, false);
     }
 
     function test_BuyWithHigherPriceViaTransfer() public {
@@ -120,8 +120,20 @@ contract NFTMarketTest is Test {
         return nftToken;
     }
 
+    ///forge-config: default.fuzz.runs = 1000
+    function testFuzz_BuyNFT(uint256 price, uint256 amount) public {
+        vm.assume(price > 0);
+        vm.assume(amount > 0 && amount < 10 ** 17);
+        uint256 nftToken = mintAndListNFT(seller1, "testFuzz_BuyNFT", price);
+        bool needRevert = false;
+        if (amount < price) {
+            needRevert = true;
+        }
+        buyNFT(buyer1, seller1 , nftToken, amount, needRevert);
+    }
 
-    function buyNFT(address buyer, address seller, uint256 nftTokenId, uint256 erc20Amount) internal {
+
+    function buyNFT(address buyer, address seller, uint256 nftTokenId, uint256 erc20Amount, bool needRevert) internal {
         vm.startPrank(buyer);
         myERC20.mint(buyer, erc20Amount);
         myERC20.approve(address(nftMarket), erc20Amount);
@@ -129,7 +141,14 @@ contract NFTMarketTest is Test {
         uint256 buyerBalanceBefore = myERC20.balanceOf(buyer);
         uint256 sellerBalanceBefore = myERC20.balanceOf(seller);
         
+        if (needRevert) {
+            vm.expectRevert();
+            nftMarket.buy(nftTokenId);
+             vm.stopPrank();
+            return;
+        }
         nftMarket.buy(nftTokenId);
+  
 
         uint256 buyerBalanceAfter = myERC20.balanceOf(buyer);
         uint256 sellerBalancAfter = myERC20.balanceOf(seller);
