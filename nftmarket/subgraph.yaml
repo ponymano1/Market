@@ -27,3 +27,26 @@ dataSources:
         - event: Sold(indexed uint256,address,address,uint256)
           handler: handleSold
       file: ./src/nft-market-with-list.ts
+  - kind: ethereum
+    name: MyERC20
+    network: sepolia
+    source:
+      address: "0xf740CcC19Dc26d34F86c70F3d67c1AC69A2c7330"
+      abi: MyERC20
+      startBlock: 5139206
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Approval
+        - Transfer
+      abis:
+        - name: MyERC20
+          file: ./abis/MyERC20.json
+      eventHandlers:
+        - event: Approval(indexed address,indexed address,uint256)
+          handler: handleApproval
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransfer
+      file: ./src/my-erc-20.ts
