@@ -25,7 +25,7 @@ contract NFTMarketTest is Test {
         {
             myERC20 = new MyERC20("MyERC20", "MYE");
             myERC721 = new MyERC721("MyERC721", "MYNFT");
-            nftMarket = new NFTMarket(myERC20, myERC721);
+            nftMarket = new NFTMarket(myERC20, myERC721, "NFTMarket", "1");
         }
         vm.stopPrank();
     }
@@ -180,6 +180,94 @@ contract NFTMarketTest is Test {
         assertEq(myERC721.ownerOf(nftTokenId), buyer, "expect nft owner is transfer to buyer");
         assertEq(buyerBalanceBefore- buyerBalanceAfter, price, "expect buyer pay erc20Amount");
         assertEq(sellerBalancAfter - sellerBalanceBefore, price, "expect seller receive erc20Amount");
+
+        vm.stopPrank();
+    }
+
+    function test_SignAndCheckSign() public {
+        (address alice, uint256 alicePk) = makeAddrAndKey("alice");
+        vm.startPrank(admin);
+        (uint256 deadline, bytes32 hash) = nftMarket.signNFTWhiteList(10, alice);
+        vm.stopPrank();
+        
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePk, hash);
+        nftMarket.checkNFTWhiteList(10, alice, deadline, v, r, s); 
+    }
+
+    function testFail_SignAndCheckSignWithWrongBuyer() public {
+        (address alice, uint256 alicePk) = makeAddrAndKey("alice");
+        (address bob, uint256 bobPk) = makeAddrAndKey("bob");
+        vm.startPrank(admin);
+        (uint256 deadline, bytes32 hash) = nftMarket.signNFTWhiteList(10, alice);
+        vm.stopPrank();
+        
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPk, hash);
+        nftMarket.checkNFTWhiteList(10, bob, deadline, v, r, s); 
+    }
+
+
+    function test_BuyWithCorrectSignature() public {
+        uint256 nftToken = mintAndListNFT(seller1, "testFail_BuyNFTWithoutList", 100);
+        (address alice, uint256 alicePk) = makeAddrAndKey("alice");
+        vm.startPrank(admin);
+        (uint256 deadline, bytes32 hash) = nftMarket.signNFTWhiteList(nftToken, alice);
+        vm.stopPrank();
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePk, hash);
+        buyNFTWithSignature(alice, seller1, nftToken, 100, false, deadline, v, r, s);     
+    }
+
+    function testFail_BuyWithWrongUser() public {
+        uint256 nftToken = mintAndListNFT(seller1, "testFail_BuyWithCorrectSignature", 100);
+        (address alice, uint256 alicePk) = makeAddrAndKey("alice");
+        (address bob, uint256 bobPk) = makeAddrAndKey("bob");
+        vm.startPrank(admin);
+        (uint256 deadline, bytes32 hash) = nftMarket.signNFTWhiteList(nftToken, alice);
+        vm.stopPrank();
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPk, hash);
+        buyNFTWithSignature(bob, seller1, nftToken, 100, false, deadline, v, r, s);     
+    }
+
+    function testFail_BuyWithWrongNftToken() public {
+        uint256 nftToken = mintAndListNFT(seller1, "testFail_BuyWithCorrectSignature", 100);
+        uint256 nftToken2 = mintAndListNFT(seller1, "testFail_BuyWithCorrectSignature", 100);
+        (address alice, uint256 alicePk) = makeAddrAndKey("alice");
+        vm.startPrank(admin);
+        (uint256 deadline, bytes32 hash) = nftMarket.signNFTWhiteList(nftToken, alice);
+        vm.stopPrank();
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePk, hash);
+        buyNFTWithSignature(alice, seller1, nftToken2, 100, false, deadline, v, r, s);     
+    }
+
+    function buyNFTWithSignature(address buyer, address seller, uint256 nftTokenId, 
+        uint256 erc20Amount, bool needRevert, uint256 deadline, uint8 v, bytes32 r, bytes32 s) 
+        internal {
+        vm.startPrank(buyer);
+        myERC20.mint(buyer, erc20Amount);
+        myERC20.approve(address(nftMarket), erc20Amount);
+        uint256 price = nftMarket.getPrice(nftTokenId);
+        uint256 buyerBalanceBefore = myERC20.balanceOf(buyer);
+        uint256 sellerBalanceBefore = myERC20.balanceOf(seller);
+        
+        if (needRevert) {
+            vm.expectRevert();
+            nftMarket.buy(nftTokenId);
+             vm.stopPrank();
+            return;
+        }
+        nftMarket.permitAndBuy(nftTokenId, buyer, deadline, v, r, s);   
+  
+
+        uint256 buyerBalanceAfter = myERC20.balanceOf(buyer);
+        uint256 sellerBalancAfter = myERC20.balanceOf(seller);
+        // console.log("buyerBalanceBefore", buyerBalanceBefore);
+        // console.log("buyerBalanceAfter", buyerBalanceAfter);
+        // console.log("sellerBalanceBefore", sellerBalanceBefore);
+        // console.log("sellerBalancAfter", sellerBalancAfter);
+        // console.log("nftMarket addre", address(nftMarket));
+        // console.log("owner:", myERC721.ownerOf(nftTokenId));
+        assertEq(myERC721.ownerOf(nftTokenId), buyer, "expect nft owner is transfer to buyer");
+        assertEq(buyerBalanceBefore- buyerBalanceAfter, price, "expect buyer pay price");
+        assertEq(sellerBalancAfter - sellerBalanceBefore, price, "expect seller receive price");
 
         vm.stopPrank();
     }

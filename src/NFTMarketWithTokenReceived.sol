@@ -5,16 +5,24 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/utils/Nonces.sol";
+
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+
+
 
 interface ITokenRecipient {
     function tokenRecived(address _from, address _to, uint256 _value, bytes memory data) external;
 }
 
-contract NFTMarket is IERC721Receiver, ITokenRecipient {
+contract NFTMarket is IERC721Receiver, ITokenRecipient, EIP712, Nonces {
     using SafeERC20 for IERC20;
 
     IERC20 private immutable _token;
     IERC721 private immutable _nft;
+
+    address private _admin;
 
     mapping(uint256 => uint256) private _prices;
     mapping(uint256 => address) private _owners;
@@ -23,13 +31,17 @@ contract NFTMarket is IERC721Receiver, ITokenRecipient {
     error NotApproved(uint256 tokenId);
     error NotListed(uint256 tokenId);
     error NotEnoughToken(uint256 value, uint256 price);
+    error ErrorSignature();
+    error Expired();
+    error NotAdmin();
 
     event List(uint256 indexed tokenId, address from, uint256 price);
     event Sold(uint256 indexed tokenId, address from, address to, uint256 price);
 
-    constructor(IERC20 token_, IERC721 nft_) {
+    constructor(IERC20 token_, IERC721 nft_, string memory name_, string memory version_) EIP712(name_, version_){
         _token = token_;
         _nft = nft_;
+        _admin = msg.sender;
     }
 
     function onERC721Received(address, address, uint256, bytes calldata) pure external override 
@@ -77,6 +89,12 @@ contract NFTMarket is IERC721Receiver, ITokenRecipient {
         emit Sold(tokenId, owner, msg.sender, price);
     }
 
+    function permitAndBuy(uint256 tokenId , address permitBuyer , uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+        checkNFTWhiteList(tokenId, permitBuyer, deadline, v, r, s);
+        buy(tokenId);
+    }
+
+
     function tokenRecived(address _from, address, uint256 _value, bytes memory data) public override {
         // do something
         uint256 tokenId = abi.decode(data, (uint256));
@@ -92,4 +110,32 @@ contract NFTMarket is IERC721Receiver, ITokenRecipient {
         _token.safeTransfer(owner, price);
         _token.safeTransfer(_from, _value - price);
     }
+    bytes32 private constant SIGN_TYPEHASH = keccak256("signNFTWhiteList(uint256 tokenId,address permitBuyer,uint256 nonce,uint256 deadline)");
+    function signNFTWhiteList(uint256 tokenId , address permitBuyer ) public view returns(uint256, bytes32) {
+        if (msg.sender != _admin) {
+             revert NotAdmin();
+        }
+        uint256 deadline = block.timestamp + 3600 * 24 * 30;
+        bytes32 structHash = keccak256(abi.encode(SIGN_TYPEHASH, tokenId, permitBuyer, nonces(permitBuyer), deadline));
+
+        bytes32 hash = _hashTypedDataV4(structHash);  
+        return (deadline, hash); 
+    }
+
+    function checkNFTWhiteList(uint256 tokenId , address permitBuyer , uint256 deadline, uint8 v, bytes32 r, bytes32 s) public   {
+        uint256 curTime = block.timestamp;
+        if (curTime > deadline) {
+            revert Expired();
+        }
+        bytes32 structHash = keccak256(abi.encode(SIGN_TYPEHASH, tokenId, permitBuyer, _useNonce(permitBuyer), deadline));
+
+        bytes32 hash = _hashTypedDataV4(structHash);  
+        address signer = ECDSA.recover(hash, v, r, s);
+        if (signer != permitBuyer) {
+            revert ErrorSignature();
+        }
+        
+
+    }
+    
 }

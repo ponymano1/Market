@@ -11,7 +11,7 @@ import "./NFTMarketWithTokenReceived.sol";
 contract NFTMarketWithList is NFTMarket {
     uint[] internal _tokenIds;
 
-    constructor(IERC20 token_, IERC721 nft_) NFTMarket(token_, nft_) {
+    constructor(IERC20 token_, IERC721 nft_) NFTMarket(token_, nft_, "NFTMarketWithList", "1") {
     }
 
     function listEx(uint256 tokenId, uint256 price) public {
