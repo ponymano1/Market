@@ -26,6 +26,7 @@ contract NFTMarket is IERC721Receiver, ITokenRecipient, EIP712, Nonces {
 
     mapping(uint256 => uint256) private _prices;
     mapping(uint256 => address) private _owners;
+    bytes32 private constant SIGN_TYPEHASH = keccak256("signNFTWhiteList(uint256 tokenId,address permitBuyer,uint256 nonce,uint256 deadline)");
 
     error NotOwner(address addr);
     error NotApproved(uint256 tokenId);
@@ -34,6 +35,7 @@ contract NFTMarket is IERC721Receiver, ITokenRecipient, EIP712, Nonces {
     error ErrorSignature();
     error Expired();
     error NotAdmin();
+    error NotPermitBuyer();
 
     event List(uint256 indexed tokenId, address from, uint256 price);
     event Sold(uint256 indexed tokenId, address from, address to, uint256 price);
@@ -63,6 +65,14 @@ contract NFTMarket is IERC721Receiver, ITokenRecipient, EIP712, Nonces {
         _;
     }
 
+    function name() public view returns (string memory) {
+        return _EIP712Name();
+    }
+
+    function version() public view returns (string memory) {
+        return _EIP712Version();
+    }
+
     function list(uint256 tokenId, uint256 price) public {
         _nft.safeTransferFrom(msg.sender, address(this), tokenId);
         _prices[tokenId] = price;
@@ -90,6 +100,9 @@ contract NFTMarket is IERC721Receiver, ITokenRecipient, EIP712, Nonces {
     }
 
     function permitAndBuy(uint256 tokenId , address permitBuyer , uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
+        if (msg.sender != permitBuyer) {
+             revert NotPermitBuyer();
+        }
         checkNFTWhiteList(tokenId, permitBuyer, deadline, v, r, s);
         buy(tokenId);
     }
@@ -110,7 +123,7 @@ contract NFTMarket is IERC721Receiver, ITokenRecipient, EIP712, Nonces {
         _token.safeTransfer(owner, price);
         _token.safeTransfer(_from, _value - price);
     }
-    bytes32 private constant SIGN_TYPEHASH = keccak256("signNFTWhiteList(uint256 tokenId,address permitBuyer,uint256 nonce,uint256 deadline)");
+    
     function signNFTWhiteList(uint256 tokenId , address permitBuyer ) public view returns(uint256, bytes32) {
         if (msg.sender != _admin) {
              revert NotAdmin();

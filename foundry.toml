@@ -8,3 +8,6 @@ libs = ["lib"]
 
 [fuzz]
 runs = 200
+
+build_info = true
+extra_output = ["storageLayout"]
