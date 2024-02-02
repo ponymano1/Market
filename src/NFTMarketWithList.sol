@@ -10,6 +10,7 @@ import "./NFTMarketWithTokenReceived.sol";
 
 contract NFTMarketWithList is NFTMarket {
     uint[] internal _tokenIds;
+    error TESTREVERT();
 
     constructor(IERC20 token_, IERC721 nft_) NFTMarket(token_, nft_, "NFTMarketWithList", "1") {
     }
@@ -21,6 +22,10 @@ contract NFTMarketWithList is NFTMarket {
 
     function listAllTokens() public view returns (uint[] memory) {
         return _tokenIds;
+    }
+
+    function testRevert() public pure returns (uint) {
+        revert TESTREVERT();
     }
 
 }
