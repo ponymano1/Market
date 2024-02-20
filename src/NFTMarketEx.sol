@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8;
 
+import {Test, console} from "forge-std/Test.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Multicall.sol";
@@ -23,7 +24,11 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 interface ITokenRecipient {
     function tokenRecived(address _from, address _to, uint256 _value, bytes memory data) external;
 }
-
+/**
+support two kinds of buy and list
+1. permit and buy
+2. buy by signature
+*/
 contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multicall {
     using SafeERC20 for IERC20;
     
@@ -88,22 +93,30 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
     function version() public view returns (string memory) {
         return _EIP712Version();
     }
-
+    /**
+    if list by signature, the function will not be called
+     */
     function list(uint256 tokenId, uint256 price) public {
         _nft.safeTransferFrom(msg.sender, address(this), tokenId);
         _prices[tokenId] = price;
         _owners[tokenId] = msg.sender;
         emit List(tokenId, msg.sender, price);
     }
-
+    /**
+    if list by signature, the function will not be called
+     */
     function getPrice(uint256 tokenId) public view returns (uint256) {
         return _prices[tokenId];
     }
-
+    /**
+    if list by signature, the function will not be called
+     */
     function getOwner(uint256 tokenId) public view returns (address) {
         return _owners[tokenId];
     }
-
+    /**
+    if list by signature, the function will not be called
+     */
     function buy(uint256 tokenId) public OnlyListed(tokenId) {
         uint256 price = _prices[tokenId];
         address owner = _owners[tokenId];
@@ -140,6 +153,9 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
         _token.safeTransfer(_from, _value - price);
     }
     
+    /**
+    only for test 
+     */
     function signNFTWhiteList(uint256 tokenId , address permitBuyer ) public view returns(uint256, bytes32) {
         if (msg.sender != _admin) {
              revert NotAdmin();
@@ -167,11 +183,19 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
     }
 
     function checkNFTSigner(uint256 tokenId , address seller, uint256 price, uint8 v, bytes32 r, bytes32 s) public {
-        //这里有bug, 一个地址可以签发多个签名，但是一旦验签，nouce就会增加，其他的就不会验签通过。
-        //所以要nouce的key 要seller+tokenId,下一个版本修复
-        bytes32 structHash = keccak256(abi.encode(CHECK_NFT_SIGNER_HASH, tokenId, seller, _useNonce(seller), price));
+        //这里之前有个bug, 一个地址可以签发多个签名，但是一旦验签，nouce就会增加，其他的就不会验签通过。
+        //所以要nouce的key 要seller+tokenId
+
+        // bytes32 nonceHash = keccak256(abi.encodePacked(seller, tokenId));
+        // address nonceAddr = address(uint160(uint256(nonceHash)));
+
+        bytes32 structHash = keccak256(abi.encode(CHECK_NFT_SIGNER_HASH, tokenId, seller, _useNonce(seller), price));//有bug代码
+        console.log("checkNFTSigner structHash:", uint256(structHash));
+       // bytes32 structHash = keccak256(abi.encode(CHECK_NFT_SIGNER_HASH, tokenId, seller, _useNonce(nonceAddr), price));
         bytes32 hash = _hashTypedDataV4(structHash);  
+        console.log("checkNFTSigner totalHash:", uint256(hash));
         address signer = ECDSA.recover(hash, v, r, s);
+        console.log("checkNFTSigner signer:", signer);
         if (signer != seller) {
             revert ErrorSignature();
         }
@@ -216,6 +240,9 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
         emit Sold(tokenId, owner, msg.sender, price);
     }
 
+    /**
+    only for test and debug
+     */
     function erc20PermitAndBuy(uint256 tokenId , uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         uint256 price = _prices[tokenId];
         IERC20Permit(address(_token)).permit(msg.sender, address(this), price, deadline, v, r, s);
@@ -225,6 +252,10 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
     function erc20Permit(uint256 tokenId , uint256 deadline, uint8 v, bytes32 r, bytes32 s) public {
         uint256 price = _prices[tokenId];
         IERC20Permit(address(_token)).permit(msg.sender, address(this), price, deadline, v, r, s);
+    }
+
+    function DOMAIN_SEPARATOR() external view virtual returns (bytes32) {
+        return _domainSeparatorV4();
     }
     
 }
