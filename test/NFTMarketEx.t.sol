@@ -148,7 +148,9 @@ contract NFTMarketExTest is Test {
         {
             nftToken = myERC721.mint(seller1, "s1_Nft_3");
             myERC721.approve(address(nftMarket), nftToken);
-            uint256 nonce = nftMarket.nonces(seller1);
+            bytes32 nonceHash = keccak256(abi.encodePacked(seller1, nftToken));
+            address nonceAddr = address(uint160(uint256(nonceHash)));
+            uint256 nonce = nftMarket.nonces(nonceAddr);
             //bytes32 structHash = keccak256(abi.encode(CHECK_NFT_SIGNER_HASH, tokenId, seller, _useNonce(seller), price));
             bytes32 structHash = keccak256(abi.encode(CHECK_NFT_SIGNER_HASH, nftToken, seller1, nonce, price));//有bug代码
             console.log("list structHash:", uint256(structHash));

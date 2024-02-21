@@ -186,12 +186,13 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
         //这里之前有个bug, 一个地址可以签发多个签名，但是一旦验签，nouce就会增加，其他的就不会验签通过。
         //所以要nouce的key 要seller+tokenId
 
-        // bytes32 nonceHash = keccak256(abi.encodePacked(seller, tokenId));
-        // address nonceAddr = address(uint160(uint256(nonceHash)));
+        bytes32 nonceHash = keccak256(abi.encodePacked(seller, tokenId));
+        address nonceAddr = address(uint160(uint256(nonceHash)));
 
-        bytes32 structHash = keccak256(abi.encode(CHECK_NFT_SIGNER_HASH, tokenId, seller, _useNonce(seller), price));//有bug代码
+        //bytes32 structHash = keccak256(abi.encode(CHECK_NFT_SIGNER_HASH, tokenId, seller, _useNonce(seller), price));//有bug代码
+        
+        bytes32 structHash = keccak256(abi.encode(CHECK_NFT_SIGNER_HASH, tokenId, seller, _useNonce(nonceAddr), price));
         console.log("checkNFTSigner structHash:", uint256(structHash));
-       // bytes32 structHash = keccak256(abi.encode(CHECK_NFT_SIGNER_HASH, tokenId, seller, _useNonce(nonceAddr), price));
         bytes32 hash = _hashTypedDataV4(structHash);  
         console.log("checkNFTSigner totalHash:", uint256(hash));
         address signer = ECDSA.recover(hash, v, r, s);
