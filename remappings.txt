@@ -16,3 +16,5 @@ openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/
 openzeppelin-contracts/=lib/openzeppelin-contracts/
 openzeppelin-foundry-upgrades/=lib/openzeppelin-foundry-upgrades/src/
 solidity-stringutils/=lib/openzeppelin-foundry-upgrades/lib/solidity-stringutils/
+@uniswap/lib/contracts/=src/lib/
+@uniswap/v2-core/contracts/=src/v2-core/

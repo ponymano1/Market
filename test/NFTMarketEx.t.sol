@@ -7,13 +7,18 @@ import {MyERC721} from "../src/MyERC721.sol";
 import {MyERC2612} from "../src/MyERC2612.sol";
 import "../src/SigUtil.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import "../src/interface/IUniswapV2Router02.sol";
+import "../src/interface/IWETH.sol";
 
 
 contract NFTMarketExTest is Test {
     bytes32 private constant CHECK_NFT_SIGNER_HASH = keccak256("checkNFTSigner(uint256 tokenId,address seller,uint256 nonce,uint256 price)");
+    address internal constant UNISWAP_V2_ROUTER = 0x882AdE0746b809d567D6F15eDFb7c49DfC59711C;
+    address internal constant WETH = 0x396BA1B9A613770FC2a6C8c86d1eD1a9D34FAc4A;
     NFTMarketEx nftMarket;
     MyERC721 myERC721;
     MyERC2612 token;
+    MyERC2612 otherToken;
     SigUtils internal sigUtils;
 
     uint256  adminPk;
@@ -57,6 +62,7 @@ contract NFTMarketExTest is Test {
         buyer2 = vm.addr(buyer2Pk);
         buyer3 = vm.addr(buyer3Pk);
         
+        
 
         claimArr.push(buyer1);
         claimArr.push(buyer2);
@@ -65,7 +71,13 @@ contract NFTMarketExTest is Test {
         {
             token = new MyERC2612();
             myERC721 = new MyERC721("MyERC721", "MYNFT");
-            nftMarket = new NFTMarketEx(token, myERC721, "NFTMarketEx", "1");
+            nftMarket = new NFTMarketEx(token, myERC721, UNISWAP_V2_ROUTER, WETH, "NFTMarketEx", "1");
+            otherToken = new MyERC2612();
+            //给buyer1 ether
+            vm.deal(buyer1, 10 ether);
+            vm.deal(buyer2, 10 ether);
+            vm.deal(buyer3, 10 ether);
+
             token.transfer(buyer1, 1000 * 10 ** 18);
             token.transfer(buyer2, 1000 * 10 ** 18);
             token.transfer(buyer3, 1000 * 10 ** 18);
@@ -73,6 +85,7 @@ contract NFTMarketExTest is Test {
             sigUtils = new SigUtils(token.DOMAIN_SEPARATOR());
         }
         vm.stopPrank();
+        
         
     }
 
@@ -217,5 +230,14 @@ contract NFTMarketExTest is Test {
         bytes32 domainSeparator = nftMarket.DOMAIN_SEPARATOR();
         console.log("list domainSeparator:", uint256(domainSeparator));
         return MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
+    }
+
+    function grantWETH(address to, uint256 amount) internal {
+        vm.startPrank(to);
+        {
+            vm.deal(to, amount);
+            IWETH(WETH).deposit{value: amount}();
+        }
+        vm.stopPrank();
     }
 }

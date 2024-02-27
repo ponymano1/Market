@@ -11,6 +11,8 @@ import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/utils/Nonces.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 //import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "./interface/IUniswapV2Router02.sol";
+import "./interface/IWETH.sol";
 
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -31,6 +33,8 @@ support two kinds of buy and list
 */
 contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multicall {
     using SafeERC20 for IERC20;
+    address internal immutable UNISWAP_V2_ROUTER = 0x882AdE0746b809d567D6F15eDFb7c49DfC59711C;
+    address internal immutable WETH = 0x396BA1B9A613770FC2a6C8c86d1eD1a9D34FAc4A;
     
     IERC20 private  _token;
     IERC721 private  _nft;
@@ -59,10 +63,12 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
     event List(uint256 indexed tokenId, address from, uint256 price);
     event Sold(uint256 indexed tokenId, address from, address to, uint256 price);
 
-    constructor(IERC20 token_, IERC721 nft_, string memory name_, string memory version_) EIP712(name_, version_) {
+    constructor(IERC20 token_, IERC721 nft_, address uniswapRouterAddr, address wethAddr,string memory name_, string memory version_) EIP712(name_, version_) {
         _token = token_;
         _nft = nft_;
-        _admin = msg.sender;        
+        _admin = msg.sender;   
+        UNISWAP_V2_ROUTER = uniswapRouterAddr;   
+        WETH = wethAddr; 
     }
 
 
@@ -257,6 +263,75 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
 
     function DOMAIN_SEPARATOR() external view virtual returns (bytes32) {
         return _domainSeparatorV4();
+    }
+
+    function getAmountsIn(IERC20 tokenIn, uint256 price) public view returns (uint256) {
+        if (tokenIn == _token) {
+            return price;
+        }
+
+        address[] memory path;
+        if (tokenIn == WETH) {
+            path = new address[](2);
+            path[0] = WETH;
+            path[1] = address(_token);
+        } else {
+            path = new address[](3);
+            path[0] = address(tokenIn);
+            path[1] = WETH;
+            path[2] = address(_token);
+        }
+        uint256[] memory amounts = IUniswapV2Router(UNISWAP_V2_ROUTER).getAmountsIn(price, path);
+        return amounts[0];
+    }
+
+    function swapToken(IERC20 tokenIn, uint256 amountIn, uint256 amountOutMin, uint256 deadline) internal returns(uint256[] memory amounts){
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
+        IERC20(tokenIn).approve(UNISWAP_V2_ROUTER, amountIn);
+
+        address[] memory path;
+        if (tokenIn == WETH) {
+            path = new address[](2);
+            path[0] = WETH;
+            path[1] = address(_token);
+            IUniswapV2Router(UNISWAP_V2_ROUTER).swapExactETHForTokens{value: amountIn}(
+                amountOutMin,
+                path,
+                address(this),
+                deadline
+            );
+        } else {
+            path = new address[](3);
+            path[0] = address(tokenIn);
+            path[1] = WETH;
+            path[2] = address(_token);
+            IUniswapV2Router(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
+                amountIn,
+                amountOutMin,
+                path,
+                address(this),
+                deadline
+            ); 
+        }
+    }
+
+    function swapTokenAndBuyNFT(IERC20 tokenIn, uint256 amountIn, uint256 tokenId, uint256 price, uint256 deadline) OnlyListed(tokenId) public {
+        uint256 amountOut = getAmountsIn(tokenIn, price);
+        if (amountOut < price) {
+            revert NotEnoughToken(amountOut, price);
+        }
+        uint256[] memory amounts = swapToken(tokenIn, amountIn, price, deadline);
+        if (amounts[amounts.length - 1] < price) {
+            revert NotEnoughToken(amounts[amounts.length - 1], price);
+        }
+        
+        _prices[tokenId] = 0;
+        address owner = _owners[tokenId];
+        _owners[tokenId] = address(0);
+        _nft.safeTransferFrom(address(this), msg.sender, tokenId);
+        _token.safeTransfer(owner, price);
+        emit Sold(tokenId, owner, msg.sender, price);
+        
     }
     
 }
