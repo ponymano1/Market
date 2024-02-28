@@ -11,8 +11,8 @@ import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/utils/Nonces.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 //import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "./interface/IUniswapV2Router02.sol";
-import "./interface/IWETH.sol";
+import "./v2-periphery/interfaces/IUniswapV2Router02.sol";
+import "./v2-periphery/interfaces/IWETH.sol";
 
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -265,13 +265,15 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
         return _domainSeparatorV4();
     }
 
-    function getAmountsIn(IERC20 tokenIn, uint256 price) public view returns (uint256) {
+    function getAmountsIn(IERC20 tokenIn, uint256 price) public view returns (uint256[] memory) {
         if (tokenIn == _token) {
-            return price;
+            uint256[] memory amounts = new uint256[](1);
+            amounts[0] = price;
+            return amounts;
         }
 
         address[] memory path;
-        if (tokenIn == WETH) {
+        if (address(tokenIn) == WETH) {
             path = new address[](2);
             path[0] = WETH;
             path[1] = address(_token);
@@ -281,55 +283,51 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
             path[1] = WETH;
             path[2] = address(_token);
         }
-        uint256[] memory amounts = IUniswapV2Router(UNISWAP_V2_ROUTER).getAmountsIn(price, path);
-        return amounts[0];
+        uint256[] memory amounts = IUniswapV2Router02(UNISWAP_V2_ROUTER).getAmountsIn(price, path);
+        return amounts;
     }
 
-    function swapToken(IERC20 tokenIn, uint256 amountIn, uint256 amountOutMin, uint256 deadline) internal returns(uint256[] memory amounts){
+    function swapTokenTo(IERC20 tokenIn, uint256 amountIn, uint256 amountOutMin, address to, uint256 deadline) internal returns(uint256[] memory amounts){
         IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
         IERC20(tokenIn).approve(UNISWAP_V2_ROUTER, amountIn);
 
         address[] memory path;
-        if (tokenIn == WETH) {
+        if (address(tokenIn) == WETH) {
             path = new address[](2);
             path[0] = WETH;
             path[1] = address(_token);
-            IUniswapV2Router(UNISWAP_V2_ROUTER).swapExactETHForTokens{value: amountIn}(
-                amountOutMin,
-                path,
-                address(this),
-                deadline
-            );
+
         } else {
             path = new address[](3);
             path[0] = address(tokenIn);
             path[1] = WETH;
             path[2] = address(_token);
-            IUniswapV2Router(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
-                amountIn,
-                amountOutMin,
-                path,
-                address(this),
-                deadline
-            ); 
+
         }
+
+        IUniswapV2Router02(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
+            amountIn,
+            amountOutMin,
+            path,
+            to,
+            deadline
+        ); 
     }
 
-    function swapTokenAndBuyNFT(IERC20 tokenIn, uint256 amountIn, uint256 tokenId, uint256 price, uint256 deadline) OnlyListed(tokenId) public {
-        uint256 amountOut = getAmountsIn(tokenIn, price);
-        if (amountOut < price) {
-            revert NotEnoughToken(amountOut, price);
-        }
-        uint256[] memory amounts = swapToken(tokenIn, amountIn, price, deadline);
-        if (amounts[amounts.length - 1] < price) {
+    function swapTokenAndBuyNFT(IERC20 tokenIn, uint256 amountIn, uint256 tokenId,uint256 deadline) OnlyListed(tokenId) public {
+        uint256 price = _prices[tokenId];
+        address owner = _owners[tokenId];
+        _prices[tokenId] = 0;
+        _owners[tokenId] = address(0);
+
+        uint256 balanceBefore = _token.balanceOf(owner);
+        uint256[] memory amounts = swapTokenTo(tokenIn, amountIn, price, owner, deadline);
+        uint256 balanceAfter = _token.balanceOf(owner);
+        if (balanceAfter < price + balanceBefore) {
             revert NotEnoughToken(amounts[amounts.length - 1], price);
         }
-        
-        _prices[tokenId] = 0;
-        address owner = _owners[tokenId];
-        _owners[tokenId] = address(0);
         _nft.safeTransferFrom(address(this), msg.sender, tokenId);
-        _token.safeTransfer(owner, price);
+
         emit Sold(tokenId, owner, msg.sender, price);
         
     }

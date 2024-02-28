@@ -7,14 +7,18 @@ import {MyERC721} from "../src/MyERC721.sol";
 import {MyERC2612} from "../src/MyERC2612.sol";
 import "../src/SigUtil.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import "../src/interface/IUniswapV2Router02.sol";
-import "../src/interface/IWETH.sol";
+import "../src/v2-periphery/interfaces/IUniswapV2Router02.sol";
+import "../src/v2-periphery/interfaces/IWETH.sol";
+//import "../src/interface/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 
 contract NFTMarketExTest is Test {
+    using Math for uint256;
     bytes32 private constant CHECK_NFT_SIGNER_HASH = keccak256("checkNFTSigner(uint256 tokenId,address seller,uint256 nonce,uint256 price)");
-    address internal constant UNISWAP_V2_ROUTER = 0x882AdE0746b809d567D6F15eDFb7c49DfC59711C;
-    address internal constant WETH = 0x396BA1B9A613770FC2a6C8c86d1eD1a9D34FAc4A;
+    address internal constant UNISWAP_V2_ROUTER = 0x214691F90394E1e66A4514767177333f8f9f44fF;
+    address internal  WETH = 0x399C99956f715C8392a965bC44dcCB58863cBc11;
     NFTMarketEx nftMarket;
     MyERC721 myERC721;
     MyERC2612 token;
@@ -48,7 +52,7 @@ contract NFTMarketExTest is Test {
     }
 
     function setUp() public {
-        adminPk = 0xA11CE;
+        adminPk = 0x6E11E;
         seller1Pk = 0x6E11E;
         seller2Pk = 0x5E11E;
         buyer1Pk = 0x7E11E;
@@ -67,6 +71,9 @@ contract NFTMarketExTest is Test {
         claimArr.push(buyer1);
         claimArr.push(buyer2);
 
+        
+        grantWETH(admin, 8000 ether);
+
         vm.startPrank(admin);
         {
             token = new MyERC2612();
@@ -77,10 +84,14 @@ contract NFTMarketExTest is Test {
             vm.deal(buyer1, 10 ether);
             vm.deal(buyer2, 10 ether);
             vm.deal(buyer3, 10 ether);
+            vm.deal(admin, 1000 ether);
 
-            token.transfer(buyer1, 1000 * 10 ** 18);
-            token.transfer(buyer2, 1000 * 10 ** 18);
-            token.transfer(buyer3, 1000 * 10 ** 18);
+            token.transfer(buyer1, 1000 ether);
+            token.transfer(buyer2, 1000 ether);
+            token.transfer(buyer3, 1000 ether);
+
+            
+            addLiquidity();
 
             sigUtils = new SigUtils(token.DOMAIN_SEPARATOR());
         }
@@ -232,11 +243,65 @@ contract NFTMarketExTest is Test {
         return MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
     }
 
+    function test_swapTokenAndBuyNFT() public {
+        uint256 nftToken = 0;
+        vm.startPrank(seller1);
+        {
+            nftToken = myERC721.mint(seller1, "s1_Nft_4");
+            myERC721.approve(address(nftMarket), nftToken);
+            nftMarket.list(nftToken, 2 ether);
+            assertEq(nftMarket.getPrice(nftToken), 2 ether, "expect correct price");
+            assertEq(myERC721.ownerOf(nftToken), address(nftMarket), "expect nftMarket is owner");
+        }
+        vm.stopPrank();
+        
+        uint256 price = nftMarket.getPrice(nftToken);
+        grantWETH(buyer1, 10 ether);
+        vm.startPrank(buyer1);
+        {
+            uint256 balanceOfSellerBefore = token.balanceOf(seller1);
+            //uint256 slappage = price.mulDiv(5, 100);
+            //(bool ok, uint256 priceWithSlappage) = price.tryAdd(slappage);
+            //require(ok, "overflowed");
+            uint256[] memory amountsIn = nftMarket.getAmountsIn(IERC20(WETH), price);
+            for (uint256 i = 0; i < amountsIn.length; i++) {
+                console.log("test_swapTokenAndBuyNFT: amountsIn: i=", i, " amountsIn[i]=",amountsIn[i]);
+            }
+            uint256 amountIn = amountsIn[0];
+            IERC20(WETH).approve(address(nftMarket), amountIn);
+            console.log("test_swapTokenAndBuyNFT: amountIn:", amountIn, " price:", price);
+            nftMarket.swapTokenAndBuyNFT(IERC20(WETH), amountIn, nftToken, block.timestamp + 1000);
+            //nftMarket.swapTokenAndBuyNFT(nftToken, 10 * 10 ** 18);
+            uint256 balanceOfSellerAfter = token.balanceOf(seller1);
+            console.log("test_swapTokenAndBuyNFT: received amount:", balanceOfSellerAfter - balanceOfSellerBefore, " price:", price);
+            assertEq(myERC721.ownerOf(nftToken), buyer1, "expect nft owner is transfer to buyer");
+            if (balanceOfSellerAfter - balanceOfSellerBefore >= price) {
+                console.log("test_swapTokenAndBuyNFT: received amount:", balanceOfSellerAfter - balanceOfSellerBefore, " price:", price);
+            } else {
+                revert();
+            }
+        }
+        vm.stopPrank();
+        
+    }
+
     function grantWETH(address to, uint256 amount) internal {
         vm.startPrank(to);
         {
             vm.deal(to, amount);
             IWETH(WETH).deposit{value: amount}();
+        }
+        vm.stopPrank();
+    }
+
+    function addLiquidity() internal {
+        vm.startPrank(admin);
+        {
+            token.approve(UNISWAP_V2_ROUTER, 1000 ether);
+            otherToken.approve(UNISWAP_V2_ROUTER, 1000 ether);
+            IERC20(WETH).approve(UNISWAP_V2_ROUTER, 1000 ether);
+            IUniswapV2Router02(UNISWAP_V2_ROUTER).addLiquidity(address(token), address(WETH), 500 ether , 100 ether , 1, 1, address(this), block.timestamp + 10000);
+            IUniswapV2Router02(UNISWAP_V2_ROUTER).addLiquidity(address(otherToken), address(WETH), 500 ether, 100 ether, 1, 1, address(this), block.timestamp + 10000);
         }
         vm.stopPrank();
     }
