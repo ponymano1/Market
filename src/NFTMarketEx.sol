@@ -33,8 +33,8 @@ support two kinds of buy and list
 */
 contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multicall {
     using SafeERC20 for IERC20;
-    address internal immutable UNISWAP_V2_ROUTER = 0x882AdE0746b809d567D6F15eDFb7c49DfC59711C;
-    address internal immutable WETH = 0x396BA1B9A613770FC2a6C8c86d1eD1a9D34FAc4A;
+    address internal immutable UNISWAP_V2_ROUTE;
+    address internal immutable WETH;
     
     IERC20 private  _token;
     IERC721 private  _nft;
