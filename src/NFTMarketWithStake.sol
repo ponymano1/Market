@@ -60,6 +60,7 @@ contract NFTMarketWETH is  IERC721Receiver, EIP712, Nonces, Multicall {
     uint256 internal cumulativeEarnPerShare; //当前的累积利率
     uint256 internal lastCalcInterestBlockNum;//上一次计算累计利率的块高
     uint256 internal totalStakeAmount; //总的质押量
+    uint256 public constant RATIO = 10 * 8;
 
     struct StakeInfo {
         uint256 stakeAmount;
@@ -153,8 +154,9 @@ contract NFTMarketWETH is  IERC721Receiver, EIP712, Nonces, Multicall {
     function stake(uint256 amountOfWETH) public {
         //updateCumulativeEarnPerShare(0);
         IERC20(WETH).safeTransferFrom(msg.sender, address(this), amountOfWETH);
-        updateStakeInfo(amountOfWETH, true);
-        totalStakeAmount += amountOfWETH;
+        uint256 amountStake = amountOfWETH / RATIO;
+        updateStakeInfo(amountStake, true);
+        totalStakeAmount += amountStake;
     } 
 
     function unStake(uint256 amount) public {
@@ -162,7 +164,8 @@ contract NFTMarketWETH is  IERC721Receiver, EIP712, Nonces, Multicall {
         totalStakeAmount -= amount;
         uint256 earn = _stakeInfos[msg.sender].earns;
         _stakeInfos[msg.sender].earns -= earn;
-        IERC20(WETH).safeTransfer(msg.sender, amount + earn);
+        uint256 amountWETH = amount * RATIO;
+        IERC20(WETH).safeTransfer(msg.sender, amountWETH);
     }
 
     function getStakeEarns() public view returns (uint256) {
