@@ -33,7 +33,7 @@ support two kinds of buy and list
 */
 contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multicall {
     using SafeERC20 for IERC20;
-    address internal immutable UNISWAP_V2_ROUTE;
+    address internal immutable UNISWAP_V2_ROUTER;
     address internal immutable WETH;
     
     IERC20 private  _token;
@@ -287,9 +287,9 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
         return amounts;
     }
 
-    function swapTokenTo(IERC20 tokenIn, uint256 amountIn, uint256 amountOutMin, address to, uint256 deadline) internal returns(uint256[] memory amounts){
-        IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
-        IERC20(tokenIn).approve(UNISWAP_V2_ROUTER, amountIn);
+    function swapTokenTo(IERC20 tokenIn, uint256 amountInMax, uint256 amountOut,address to, uint256 deadline) internal {
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), amountInMax);
+        IERC20(tokenIn).approve(UNISWAP_V2_ROUTER, amountInMax);
 
         address[] memory path;
         if (address(tokenIn) == WETH) {
@@ -304,27 +304,29 @@ contract NFTMarketEx is  IERC721Receiver, ITokenRecipient, EIP712, Nonces, Multi
             path[2] = address(_token);
 
         }
-
-        IUniswapV2Router02(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
-            amountIn,
-            amountOutMin,
+        
+        IUniswapV2Router02(UNISWAP_V2_ROUTER).swapTokensForExactTokens(
+            amountOut,
+            amountInMax,
             path,
             to,
             deadline
-        ); 
+        );
+
+  
     }
 
-    function swapTokenAndBuyNFT(IERC20 tokenIn, uint256 amountIn, uint256 tokenId,uint256 deadline) OnlyListed(tokenId) public {
+    function swapTokenAndBuyNFT(IERC20 tokenIn, uint256 amountInMax, uint256 tokenId,uint256 deadline) OnlyListed(tokenId) public {
         uint256 price = _prices[tokenId];
         address owner = _owners[tokenId];
         _prices[tokenId] = 0;
         _owners[tokenId] = address(0);
 
         uint256 balanceBefore = _token.balanceOf(owner);
-        uint256[] memory amounts = swapTokenTo(tokenIn, amountIn, price, owner, deadline);
+        swapTokenTo(tokenIn, amountInMax, price, owner, deadline);
         uint256 balanceAfter = _token.balanceOf(owner);
         if (balanceAfter < price + balanceBefore) {
-            revert NotEnoughToken(amounts[amounts.length - 1], price);
+            revert NotEnoughToken(balanceAfter - balanceBefore, price);
         }
         _nft.safeTransferFrom(address(this), msg.sender, tokenId);
 

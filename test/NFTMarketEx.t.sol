@@ -260,22 +260,20 @@ contract NFTMarketExTest is Test {
         vm.startPrank(buyer1);
         {
             uint256 balanceOfSellerBefore = token.balanceOf(seller1);
-            //uint256 slappage = price.mulDiv(5, 100);
-            //(bool ok, uint256 priceWithSlappage) = price.tryAdd(slappage);
-            //require(ok, "overflowed");
             uint256[] memory amountsIn = nftMarket.getAmountsIn(IERC20(WETH), price);
             for (uint256 i = 0; i < amountsIn.length; i++) {
                 console.log("test_swapTokenAndBuyNFT: amountsIn: i=", i, " amountsIn[i]=",amountsIn[i]);
             }
             uint256 amountIn = amountsIn[0];
-            IERC20(WETH).approve(address(nftMarket), amountIn);
-            console.log("test_swapTokenAndBuyNFT: amountIn:", amountIn, " price:", price);
-            nftMarket.swapTokenAndBuyNFT(IERC20(WETH), amountIn, nftToken, block.timestamp + 1000);
+            uint256 amountInMax = amountIn + amountIn.mulDiv(5, 100);
+            IERC20(WETH).approve(address(nftMarket), amountInMax);
+            console.log("test_swapTokenAndBuyNFT: amountIn:", amountIn, " amountInMax:", amountInMax);
+            nftMarket.swapTokenAndBuyNFT(IERC20(WETH), amountInMax, nftToken, block.timestamp + 10000);
             //nftMarket.swapTokenAndBuyNFT(nftToken, 10 * 10 ** 18);
             uint256 balanceOfSellerAfter = token.balanceOf(seller1);
             console.log("test_swapTokenAndBuyNFT: received amount:", balanceOfSellerAfter - balanceOfSellerBefore, " price:", price);
             assertEq(myERC721.ownerOf(nftToken), buyer1, "expect nft owner is transfer to buyer");
-            if (balanceOfSellerAfter - balanceOfSellerBefore >= price) {
+            if (balanceOfSellerAfter - balanceOfSellerBefore == price) {
                 console.log("test_swapTokenAndBuyNFT: received amount:", balanceOfSellerAfter - balanceOfSellerBefore, " price:", price);
             } else {
                 revert();
